@@ -8,6 +8,9 @@ class BaselineConfig:
     dataset_name: str = "BNCI2014_001"
     subject_ids: tuple[int, ...] = (1, 2, 3)
     stability_seeds: tuple[int, ...] = (7, 11, 19)
+    evaluation_protocol: str = "within_session"
+    train_session_name: str = "0train"
+    valid_session_name: str = "1test"
     sfreq: float = 128.0
     filter_low_hz: float = 4.0
     filter_high_hz: float = 38.0
@@ -18,7 +21,7 @@ class BaselineConfig:
     use_euclidean_alignment: bool = True
     ea_group_by_subject: bool = True
     ea_eps: float = 1e-6
-    
+
     trial_start_offset_seconds: float = -0.5
     window_size_seconds: float = 4.0
     window_stride_seconds: float = 4.0
@@ -42,6 +45,10 @@ class BaselineConfig:
     label_smoothing: float = 0.1
     early_stopping_patience: int = 12
     early_stopping_monitor: str = "valid_accuracy"
+    lr_scheduler_name: str = "ReduceLROnPlateau"
+    lr_scheduler_factor: float = 0.5
+    lr_scheduler_patience: int = 4
+    lr_scheduler_monitor: str = "valid_loss"
     random_seed: int = 7
     train_fraction: float = 0.8
 

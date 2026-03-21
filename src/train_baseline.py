@@ -12,7 +12,7 @@ try:
     from braindecode.models import EEGNet
 except ImportError:  # pragma: no cover - compatibility with older braindecode releases
     from braindecode.models import EEGNetv4 as EEGNet
-from skorch.callbacks import EarlyStopping, EpochScoring
+from skorch.callbacks import EarlyStopping, EpochScoring, LRScheduler
 from skorch.helper import predefined_split
 
 from .config import BaselineConfig, OutputConfig
@@ -74,6 +74,8 @@ def _build_classifier(
         raise ValueError(f"Unsupported optimizer_name: {cfg.optimizer_name}")
     if cfg.criterion_name != "CrossEntropyLoss":
         raise ValueError(f"Unsupported criterion_name: {cfg.criterion_name}")
+    if cfg.lr_scheduler_name != "ReduceLROnPlateau":
+        raise ValueError(f"Unsupported lr_scheduler_name: {cfg.lr_scheduler_name}")
 
     monitor_lower_is_better = _monitor_prefers_lower(cfg.early_stopping_monitor)
     callbacks = [
@@ -93,6 +95,15 @@ def _build_classifier(
                 on_train=False,
                 name="valid_accuracy",
                 lower_is_better=False,
+            ),
+        ),
+        (
+            "lr_scheduler",
+            LRScheduler(
+                policy=torch.optim.lr_scheduler.ReduceLROnPlateau,
+                monitor=cfg.lr_scheduler_monitor,
+                factor=cfg.lr_scheduler_factor,
+                patience=cfg.lr_scheduler_patience,
             ),
         ),
         (
@@ -209,6 +220,11 @@ def train_and_save_baseline(
                 "model_path": str(model_path),
                 "scores_path": str(scores_path),
                 "model_name": cfg.model_name,
+                "evaluation_protocol": cfg.evaluation_protocol,
+                "train_session_name": cfg.train_session_name,
+                "valid_session_name": cfg.valid_session_name,
+                "n_train_samples": len(bundle.train_set),
+                "n_valid_samples": len(bundle.valid_set),
                 "random_seed": cfg.random_seed,
             },
             f,
@@ -223,6 +239,7 @@ def train_and_save_baseline(
         "scores_path": str(scores_path),
         **plot_paths,
         "model_name": cfg.model_name,
+        "evaluation_protocol": cfg.evaluation_protocol,
         "random_seed": cfg.random_seed,
     }
 

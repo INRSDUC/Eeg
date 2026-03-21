@@ -173,6 +173,76 @@ def _compute_alignment_mats(
     }
 
 
+def _split_indices(
+    metadata,
+    targets: np.ndarray,
+    cfg: BaselineConfig,
+) -> tuple[np.ndarray, np.ndarray]:
+    indices = np.arange(len(metadata))
+    protocol = cfg.evaluation_protocol.lower()
+
+    if protocol == "random":
+        return train_test_split(
+            indices,
+            train_size=cfg.train_fraction,
+            random_state=cfg.random_seed,
+            stratify=targets,
+        )
+
+    if protocol == "cross_session":
+        if "session" not in metadata.columns:
+            raise ValueError("cross_session evaluation requires a 'session' column in metadata")
+        session_values = metadata["session"].astype(str).to_numpy()
+        train_idx = indices[session_values == cfg.train_session_name]
+        valid_idx = indices[session_values == cfg.valid_session_name]
+        if len(train_idx) == 0 or len(valid_idx) == 0:
+            raise ValueError(
+                "cross_session split produced an empty partition: "
+                f"train_session_name={cfg.train_session_name!r}, valid_session_name={cfg.valid_session_name!r}"
+            )
+        return train_idx, valid_idx
+
+    if protocol == "within_session":
+        required_columns = {"subject", "session"}
+        missing = required_columns.difference(metadata.columns)
+        if missing:
+            raise ValueError(
+                "within_session evaluation requires metadata columns: "
+                + ", ".join(sorted(missing))
+            )
+
+        train_parts = []
+        valid_parts = []
+        subject_values = metadata["subject"].to_numpy()
+        session_values = metadata["session"].astype(str).to_numpy()
+
+        for subject in np.unique(subject_values):
+            for session in np.unique(session_values[subject_values == subject]):
+                group_mask = (subject_values == subject) & (session_values == session)
+                group_idx = indices[group_mask]
+                group_targets = targets[group_mask]
+                unique_targets, counts = np.unique(group_targets, return_counts=True)
+                can_stratify = len(unique_targets) > 1 and np.all(counts >= 2)
+                split_kwargs = {
+                    "train_size": cfg.train_fraction,
+                    "random_state": cfg.random_seed,
+                }
+                if can_stratify:
+                    split_kwargs["stratify"] = group_targets
+                group_train_idx, group_valid_idx = train_test_split(group_idx, **split_kwargs)
+                train_parts.append(np.sort(group_train_idx))
+                valid_parts.append(np.sort(group_valid_idx))
+
+        if not train_parts or not valid_parts:
+            raise ValueError("within_session split produced an empty partition")
+
+        train_idx = np.concatenate(train_parts)
+        valid_idx = np.concatenate(valid_parts)
+        return np.sort(train_idx), np.sort(valid_idx)
+
+    raise ValueError(f"Unsupported evaluation_protocol: {cfg.evaluation_protocol}")
+
+
 def load_moabb_windows(cfg: BaselineConfig) -> DatasetBundle:
     dataset = MOABBDataset(dataset_name=cfg.dataset_name, subject_ids=list(cfg.subject_ids))
 
@@ -214,12 +284,10 @@ def load_moabb_windows(cfg: BaselineConfig) -> DatasetBundle:
     else:
         groups = np.asarray(["global"] * len(metadata), dtype=object)
 
-    indices = np.arange(len(windows_dataset))
-    train_idx, valid_idx = train_test_split(
-        indices,
-        train_size=cfg.train_fraction,
-        random_state=cfg.random_seed,
-        stratify=targets,
+    train_idx, valid_idx = _split_indices(
+        metadata=metadata,
+        targets=targets,
+        cfg=cfg,
     )
 
     train_set: Dataset = Subset(windows_dataset, train_idx.tolist())
