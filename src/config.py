@@ -14,10 +14,25 @@ class BaselineConfig:
     use_exponential_moving_standardize: bool = True
     standardize_factor_new: float = 1e-3
     standardize_init_block_size: int = 1000
+
+    use_euclidean_alignment: bool = True
+    ea_group_by_subject: bool = True
+    ea_eps: float = 1e-6
+    
     trial_start_offset_seconds: float = -0.5
     window_size_seconds: float = 4.0
     window_stride_seconds: float = 4.0
     trialwise_decoding: bool = True
+
+    use_data_augmentation: bool = True
+
+    aug_time_shift_prob: float = 0.5
+    aug_time_shift_max_samples: int = 16
+    aug_amplitude_jitter_prob: float = 0.5
+    aug_amplitude_jitter_std: float = 0.1
+    aug_gaussian_noise_prob: float = 0.5
+    aug_gaussian_noise_std: float = 0.01
+    aug_channel_dropout_prob: float = 0.1
     n_epochs: int = 100
     batch_size: int = 64
     learning_rate: float = 1e-3

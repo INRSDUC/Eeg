@@ -71,7 +71,7 @@ Output:
 ## Notes
 
 - Default data source is `BNCI2014_001` via MOABB/Braindecode.
-- Default baseline preprocessing now follows the Braindecode motor-imagery recipe more closely with a 4-38 Hz bandpass and exponential moving standardization.
+- Default baseline preprocessing now combines a 4-38 Hz bandpass, exponential moving standardization, optional Euclidean Alignment, and training-only augmentation.
 - Hyperparameters are defined in `src/config.py`.
 - Attack evaluation now reports pre-defense ASR, post-denoising ASR, post suspicious-window filtering ASR, and query-budget exhaustion rate.
 - This is a development scaffold with clean module boundaries so you can iterate each stage independently.
