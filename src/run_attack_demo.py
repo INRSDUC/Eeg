@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .attack.greedy_attack import GreedySparseScoreAttack
+from .attack.greedy_attack import build_score_attack
 from .config import AttackConfig, BaselineConfig, OutputConfig
 from .data import load_moabb_windows
 from .model_oracle import load_eegnet_checkpoint, make_score_fn
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     y_int = int(y)
 
     atk_cfg = AttackConfig()
-    attack = GreedySparseScoreAttack(
+    attack = build_score_attack(
         score_fn=score_fn,
         sfreq=baseline_cfg.sfreq,
         n_windows=atk_cfg.n_windows,
@@ -36,21 +36,33 @@ if __name__ == "__main__":
         basis_rank_r=atk_cfg.basis_rank_r,
         basis_min_hz=atk_cfg.basis_min_hz,
         basis_max_hz=atk_cfg.basis_max_hz,
+        basis_mode=atk_cfg.basis_mode,
+        basis_phase_count=atk_cfg.basis_phase_count,
+        candidate_probe_restarts=atk_cfg.candidate_probe_restarts,
+        candidate_probe_scale=atk_cfg.candidate_probe_scale,
         max_outer_iters=atk_cfg.max_outer_iters,
         max_query_budget=atk_cfg.max_query_budget,
         spsa_steps=atk_cfg.spsa_steps,
         spsa_step_size=atk_cfg.spsa_step_size,
         spsa_perturb_scale=atk_cfg.spsa_perturb_scale,
+        spsa_restarts=atk_cfg.spsa_restarts,
+        spsa_init_scale=atk_cfg.spsa_init_scale,
         l2_weight=atk_cfg.l2_weight,
         tv_weight=atk_cfg.tv_weight,
         band_weight=atk_cfg.band_weight,
         max_coeff_abs=atk_cfg.max_coeff_abs,
+        max_perturbation_peak_ratio=atk_cfg.max_perturbation_peak_ratio,
+        support_mode=atk_cfg.support_mode,
+        channel_waveform_rank=atk_cfg.channel_waveform_rank,
+        channel_shortlist_size=atk_cfg.channel_shortlist_size,
         seed=baseline_cfg.random_seed,
     )
 
     result = attack.run(x_np, y_int)
 
     output = {
+        "support_mode": atk_cfg.support_mode,
+        "basis_mode": atk_cfg.basis_mode,
         "success": result.success,
         "final_margin": result.margin,
         "support": result.support,

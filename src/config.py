@@ -55,20 +55,30 @@ class BaselineConfig:
 
 @dataclass
 class AttackConfig:
+    support_mode: str = "channel_first"
+    basis_mode: str = "hybrid"
     n_windows: int = 8
     support_budget_k: int = 5
+    channel_shortlist_size: int | None = None
     basis_rank_r: int = 4
+    channel_waveform_rank: int | None = None
     basis_min_hz: float = 2.0
     basis_max_hz: float = 30.0
+    basis_phase_count: int = 2
+    candidate_probe_restarts: int = 2
+    candidate_probe_scale: float = 0.5
     max_outer_iters: int = 5
     max_query_budget: int | None = 5000
     spsa_steps: int = 80
     spsa_step_size: float = 0.04
     spsa_perturb_scale: float = 0.02
+    spsa_restarts: int = 2
+    spsa_init_scale: float = 0.2
     l2_weight: float = 1e-3
     tv_weight: float = 1e-3
     band_weight: float = 1e-3
     max_coeff_abs: float = 0.2
+    max_perturbation_peak_ratio: float | None = None
 
 
 @dataclass
