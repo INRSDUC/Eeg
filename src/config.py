@@ -7,6 +7,7 @@ class BaselineConfig:
     model_name: str = "EEGConformer"
     dataset_name: str = "BNCI2014_001"
     subject_ids: tuple[int, ...] = (1, 2, 3)
+    target_mode: str = "task"
     stability_seeds: tuple[int, ...] = (7, 11, 19)
     evaluation_protocol: str = "within_session"
     train_session_name: str = "0train"
@@ -107,11 +108,17 @@ class OutputConfig:
     def baseline_multiseed_summary_path(self) -> Path:
         return self.root / self.baseline_multiseed_summary_name
 
+    def _seeded_name(self, filename: str, seed: int) -> str:
+        path = Path(filename)
+        suffix = "".join(path.suffixes)
+        stem = path.name[: -len(suffix)] if suffix else path.name
+        return f"{stem}_seed{seed}{suffix}"
+
     def baseline_model_path_for_seed(self, seed: int) -> Path:
-        return self.root / f"eegconformer_baseline_seed{seed}.pt"
+        return self.root / self._seeded_name(self.baseline_model_name, seed)
 
     def baseline_metrics_path_for_seed(self, seed: int) -> Path:
-        return self.root / f"baseline_metrics_seed{seed}.json"
+        return self.root / self._seeded_name(self.baseline_metrics_name, seed)
 
     def baseline_scores_path_for_seed(self, seed: int) -> Path:
-        return self.root / f"baseline_scores_seed{seed}.npz"
+        return self.root / self._seeded_name(self.baseline_scores_name, seed)

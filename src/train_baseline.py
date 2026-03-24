@@ -199,8 +199,11 @@ def train_and_save_baseline(
         "n_chans": bundle.n_chans,
         "n_classes": bundle.n_classes,
         "input_window_samples": bundle.input_window_samples,
+        "target_mode": cfg.target_mode,
+        "class_names": list(bundle.class_names),
         "config": cfg.__dict__,
         "history": history,
+        "split_summary": bundle.split_summary,
     }
     torch.save(checkpoint, model_path)
 
@@ -220,9 +223,12 @@ def train_and_save_baseline(
                 "model_path": str(model_path),
                 "scores_path": str(scores_path),
                 "model_name": cfg.model_name,
+                "target_mode": cfg.target_mode,
+                "class_names": list(bundle.class_names),
                 "evaluation_protocol": cfg.evaluation_protocol,
                 "train_session_name": cfg.train_session_name,
                 "valid_session_name": cfg.valid_session_name,
+                "split_summary": bundle.split_summary,
                 "n_train_samples": len(bundle.train_set),
                 "n_valid_samples": len(bundle.valid_set),
                 "random_seed": cfg.random_seed,

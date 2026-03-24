@@ -38,6 +38,20 @@ Outputs:
 - `outputs/train_val_accuracy_curve.png`
 - `outputs/learning_rate_curve.png`
 
+## Run BNCI2014_001 human-recognition baseline
+
+```bash
+python -m src.run_human_recognition_baseline
+```
+
+Outputs:
+- `outputs/bnci2014_001_human_recognition/subject_recognition_baseline.pt`
+- `outputs/bnci2014_001_human_recognition/subject_recognition_metrics.json`
+- `outputs/bnci2014_001_human_recognition/subject_recognition_scores.npz`
+Notes:
+- Uses subject-ID recognition labels.
+- Uses a full cross-session split: trains on `0train` and validates on `1test`.
+
 ## Run multi-seed baseline stability sweep
 
 ```bash
