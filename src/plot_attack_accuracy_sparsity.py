@@ -106,6 +106,8 @@ def _build_attack_from_report(score_fn, baseline_cfg: BaselineConfig, report: di
         support_mode=attack_cfg.support_mode,
         channel_waveform_rank=attack_cfg.channel_waveform_rank,
         channel_shortlist_size=attack_cfg.channel_shortlist_size,
+        enforce_unique_channels=attack_cfg.enforce_unique_channels,
+        stop_on_success=attack_cfg.stop_on_success,
         seed=baseline_cfg.random_seed + sample_idx,
     )
 
@@ -128,6 +130,94 @@ def _rerun_report_sample(
     )
     result = attack.run(x_np, y_int)
     return x_np, y_int, result
+
+
+def _unique_channels_from_support(support) -> list[int]:
+    selected = []
+    for atom in support:
+        channel = int(atom[0]) if isinstance(atom, tuple) else int(atom)
+        if channel not in selected:
+            selected.append(channel)
+    return selected
+
+
+def _find_distinct_channel_example(
+    report: dict,
+    bundle,
+    baseline_cfg: BaselineConfig,
+    score_fn,
+    target_channels: int,
+    max_candidates: int = 200,
+) -> tuple[int, np.ndarray, int, object, list[int]]:
+    attack_cfg = AttackConfig(**report["attack_config"])
+    constrained_cfg = AttackConfig(**{**attack_cfg.__dict__})
+    constrained_cfg.support_budget_k = target_channels
+    constrained_cfg.max_outer_iters = target_channels
+    constrained_cfg.enforce_unique_channels = True
+    constrained_cfg.stop_on_success = False
+    constrained_cfg.support_mode = "channel_then_window"
+    constrained_cfg.channel_shortlist_size = max(int(constrained_cfg.channel_shortlist_size or 0), target_channels + 4)
+    constrained_cfg.max_query_budget = max(int(attack_cfg.max_query_budget or 0), 70000) if attack_cfg.max_query_budget is not None else 70000
+    constrained_cfg.spsa_steps = max(int(attack_cfg.spsa_steps), 240)
+    constrained_cfg.spsa_restarts = max(int(attack_cfg.spsa_restarts), 4)
+    constrained_cfg.candidate_probe_restarts = max(int(attack_cfg.candidate_probe_restarts), 5)
+    constrained_cfg.max_coeff_abs = max(float(attack_cfg.max_coeff_abs), 1.25)
+
+    candidate_rows = sorted(
+        report["per_sample"],
+        key=lambda row: (
+            0 if row["success"] else 1,
+            row["first_success_k"] if row["first_success_k"] is not None else 999,
+            row["final_margin"],
+        ),
+    )
+
+    for row in candidate_rows[:max_candidates]:
+        sample_idx = int(row["idx"])
+        x, y, _ = bundle.valid_set[sample_idx]
+        x_np = np.asarray(x, dtype=np.float32)
+        y_int = int(y)
+
+        attack = build_score_attack(
+            score_fn=score_fn,
+            sfreq=baseline_cfg.sfreq,
+            n_windows=constrained_cfg.n_windows,
+            support_budget_k=constrained_cfg.support_budget_k,
+            basis_rank_r=constrained_cfg.basis_rank_r,
+            basis_min_hz=constrained_cfg.basis_min_hz,
+            basis_max_hz=constrained_cfg.basis_max_hz,
+            basis_mode=constrained_cfg.basis_mode,
+            basis_phase_count=constrained_cfg.basis_phase_count,
+            candidate_probe_restarts=constrained_cfg.candidate_probe_restarts,
+            candidate_probe_scale=constrained_cfg.candidate_probe_scale,
+            max_outer_iters=constrained_cfg.max_outer_iters,
+            max_query_budget=constrained_cfg.max_query_budget,
+            spsa_steps=constrained_cfg.spsa_steps,
+            spsa_step_size=constrained_cfg.spsa_step_size,
+            spsa_perturb_scale=constrained_cfg.spsa_perturb_scale,
+            spsa_restarts=constrained_cfg.spsa_restarts,
+            spsa_init_scale=constrained_cfg.spsa_init_scale,
+            l2_weight=constrained_cfg.l2_weight,
+            tv_weight=constrained_cfg.tv_weight,
+            band_weight=constrained_cfg.band_weight,
+            max_coeff_abs=constrained_cfg.max_coeff_abs,
+            max_perturbation_peak_ratio=constrained_cfg.max_perturbation_peak_ratio,
+            support_mode=constrained_cfg.support_mode,
+            channel_waveform_rank=constrained_cfg.channel_waveform_rank,
+            channel_shortlist_size=constrained_cfg.channel_shortlist_size,
+            enforce_unique_channels=constrained_cfg.enforce_unique_channels,
+            stop_on_success=constrained_cfg.stop_on_success,
+            seed=baseline_cfg.random_seed + sample_idx,
+        )
+        result = attack.run(x_np, y_int)
+        selected_channels = _unique_channels_from_support(result.support)
+        if result.success and len(selected_channels) >= target_channels:
+            return sample_idx, x_np, y_int, result, selected_channels[:target_channels]
+
+    raise RuntimeError(
+        f"Could not find a successful constrained example with {target_channels} distinct channels "
+        f"within the first {max_candidates} candidate samples."
+    )
 
 
 def _make_accuracy_plot(
@@ -180,11 +270,13 @@ def _make_accuracy_plot(
 def _make_head_heatmap(
     x_np: np.ndarray,
     result,
+    selected_channels: list[int],
     out_path: Path,
+    title: str,
 ) -> dict:
     _configure_plot_style()
     channel_values = np.zeros((len(EEG_CHANNEL_NAMES_22),), dtype=np.float64)
-    for ch_idx in range(len(EEG_CHANNEL_NAMES_22)):
+    for ch_idx in selected_channels:
         channel_values[ch_idx] = _channel_power_ratio_percent(x_np[ch_idx], result.delta[ch_idx])
 
     info = mne.create_info(ch_names=EEG_CHANNEL_NAMES_22, sfreq=128.0, ch_types="eeg")
@@ -203,8 +295,7 @@ def _make_head_heatmap(
         sphere=0.095,
     )
 
-    top_channels = np.argsort(channel_values)[::-1][:4]
-    for ch_idx in top_channels:
+    for ch_idx in selected_channels:
         xy = pos[ch_idx]
         ax.text(
             xy[0],
@@ -219,52 +310,42 @@ def _make_head_heatmap(
 
     cbar = fig.colorbar(im, ax=ax, shrink=0.86, pad=0.08)
     cbar.set_label("Added Perturbation Power (% of Channel Signal Power)")
-    ax.set_title("Sparse Channel Attack: Selected Electrodes and Perturbation Power")
+    ax.set_title(title)
     fig.tight_layout()
     fig.savefig(out_path, dpi=220)
     plt.close(fig)
 
     return {
-        "top_channels": [
+        "selected_channels": [
             {
                 "channel_index": int(ch_idx),
                 "channel_name": EEG_CHANNEL_NAMES_22[ch_idx],
                 "power_ratio_pct": float(channel_values[ch_idx]),
             }
-            for ch_idx in top_channels
+            for ch_idx in selected_channels
         ]
     }
 
 
-def _make_sparse_channel_time_waveform_plot(
+def _make_sparse_channel_waveform_plot(
     x_np: np.ndarray,
     result,
     sample_idx: int,
+    selected_channels: list[int],
     out_path: Path,
     sfreq: float,
+    title: str,
 ) -> dict:
     _configure_plot_style()
-    unique_channels = []
-    for atom in result.support:
-        channel = int(atom[0]) if isinstance(atom, tuple) else int(atom)
-        if channel not in unique_channels:
-            unique_channels.append(channel)
-        if len(unique_channels) == 4:
-            break
-    if len(unique_channels) < 4:
-        ranked = list(np.argsort(np.linalg.norm(result.delta, axis=1))[::-1])
-        for channel in ranked:
-            channel = int(channel)
-            if channel not in unique_channels:
-                unique_channels.append(channel)
-            if len(unique_channels) == 4:
-                break
 
     t = np.arange(x_np.shape[1], dtype=np.float32) / sfreq
-    fig, axes = plt.subplots(4, 1, figsize=(11.0, 8.4), sharex=True)
+    n_channels = len(selected_channels)
+    fig, axes = plt.subplots(n_channels, 1, figsize=(11.0, 1.95 * n_channels + 0.8), sharex=True)
+    if n_channels == 1:
+        axes = [axes]
 
     channel_rows = []
-    for ax, ch_idx in zip(axes, unique_channels[:4]):
+    for ax, ch_idx in zip(axes, selected_channels):
         original = x_np[ch_idx]
         attacked = result.x_adv[ch_idx]
         delta = result.delta[ch_idx]
@@ -315,7 +396,7 @@ def _make_sparse_channel_time_waveform_plot(
     handles, labels = axes[0].get_legend_handles_labels()
     axes[0].legend(handles, labels, loc="upper right")
     axes[-1].set_xlabel("Time (s)")
-    fig.suptitle(f"Sparse Channel-Time Attack Waveforms on Four Attacked Channels (sample {sample_idx})", y=0.995)
+    fig.suptitle(f"{title} (sample {sample_idx})", y=0.995)
     fig.tight_layout()
     fig.savefig(out_path, dpi=220)
     plt.close(fig)
@@ -342,8 +423,6 @@ def plot_attack_accuracy_vs_sparsity() -> dict:
     score_fn = make_score_fn(model, device)
 
     sparse_channel_sample_idx = 59
-    sparse_channel_time_sample_idx = 37
-
     x_sparse, y_sparse, result_sparse = _rerun_report_sample(
         report=sparse_channel_report,
         sample_idx=sparse_channel_sample_idx,
@@ -351,28 +430,54 @@ def plot_attack_accuracy_vs_sparsity() -> dict:
         baseline_cfg=baseline_cfg,
         score_fn=score_fn,
     )
-    x_sparse_time, y_sparse_time, result_sparse_time = _rerun_report_sample(
-        report=sparse_channel_time_report,
-        sample_idx=sparse_channel_time_sample_idx,
-        bundle=bundle,
-        baseline_cfg=baseline_cfg,
-        score_fn=score_fn,
-    )
+    sparse_channel_selected_channels = [int(ch) for ch in result_sparse.support[:4]]
 
     head_heatmap_path = out_cfg.root / "sparse_channel_attack_head_heatmap.png"
     head_summary = _make_head_heatmap(
         x_np=x_sparse,
         result=result_sparse,
+        selected_channels=sparse_channel_selected_channels,
         out_path=head_heatmap_path,
+        title="Sparse Channel Attack: Four Attacked Electrodes",
     )
 
-    waveform_path = out_cfg.root / "sparse_channel_time_attack_waveforms_4ch.png"
-    waveform_summary = _make_sparse_channel_time_waveform_plot(
+    waveform_path = out_cfg.root / "sparse_channel_attack_waveforms_4ch.png"
+    waveform_summary = _make_sparse_channel_waveform_plot(
+        x_np=x_sparse,
+        result=result_sparse,
+        sample_idx=sparse_channel_sample_idx,
+        selected_channels=sparse_channel_selected_channels,
+        out_path=waveform_path,
+        sfreq=baseline_cfg.sfreq,
+        title="Sparse Channel Attack Waveforms on Four Attacked Channels",
+    )
+
+    sparse_channel_time_sample_idx, x_sparse_time, y_sparse_time, result_sparse_time, sparse_channel_time_selected_channels = _find_distinct_channel_example(
+        report=sparse_channel_time_report,
+        bundle=bundle,
+        baseline_cfg=baseline_cfg,
+        score_fn=score_fn,
+        target_channels=6,
+    )
+
+    sparse_channel_time_head_heatmap_path = out_cfg.root / "sparse_channel_time_attack_head_heatmap_6ch.png"
+    sparse_channel_time_head_summary = _make_head_heatmap(
+        x_np=x_sparse_time,
+        result=result_sparse_time,
+        selected_channels=sparse_channel_time_selected_channels,
+        out_path=sparse_channel_time_head_heatmap_path,
+        title="Sparse Channel-Time Attack: Six Attacked Electrodes",
+    )
+
+    sparse_channel_time_waveform_path = out_cfg.root / "sparse_channel_time_attack_waveforms_6ch.png"
+    sparse_channel_time_waveform_summary = _make_sparse_channel_waveform_plot(
         x_np=x_sparse_time,
         result=result_sparse_time,
         sample_idx=sparse_channel_time_sample_idx,
-        out_path=waveform_path,
+        selected_channels=sparse_channel_time_selected_channels,
+        out_path=sparse_channel_time_waveform_path,
         sfreq=baseline_cfg.sfreq,
+        title="Sparse Channel-Time Attack Waveforms on Six Attacked Channels",
     )
 
     top4 = sorted(
@@ -385,6 +490,8 @@ def plot_attack_accuracy_vs_sparsity() -> dict:
         "figure_path": str(accuracy_plot_path),
         "head_heatmap_path": str(head_heatmap_path),
         "waveform_path": str(waveform_path),
+        "sparse_channel_time_head_heatmap_path": str(sparse_channel_time_head_heatmap_path),
+        "sparse_channel_time_waveform_path": str(sparse_channel_time_waveform_path),
         "dataset_name": sparse_channel_report["dataset_name"],
         "model_name": sparse_channel_report["model_name"],
         "sparse_channel_attack": {
@@ -415,12 +522,17 @@ def plot_attack_accuracy_vs_sparsity() -> dict:
                 }
                 for channel, count in top4
             ],
-            "head_heatmap_top_channels": head_summary["top_channels"],
+            "example_selected_channels": [
+                {
+                    "channel_index": int(ch_idx),
+                    "channel_name": EEG_CHANNEL_NAMES_22[ch_idx],
+                }
+                for ch_idx in sparse_channel_selected_channels
+            ],
+            "head_heatmap_selected_channels": head_summary["selected_channels"],
         },
         "sparse_channel_time_attack": {
             "display_name": "Sparse Channel-Time Attack",
-            "example_sample_idx": sparse_channel_time_sample_idx,
-            "example_true_label": int(y_sparse_time),
             "attacked_accuracy_by_k": [
                 {
                     "k": row["k"],
@@ -428,6 +540,22 @@ def plot_attack_accuracy_vs_sparsity() -> dict:
                 }
                 for row in sparse_channel_time_report["prefix_summary"]
             ],
+            "example_sample_idx": sparse_channel_time_sample_idx,
+            "example_true_label": int(y_sparse_time),
+            "example_selected_channels": [
+                {
+                    "channel_index": int(ch_idx),
+                    "channel_name": EEG_CHANNEL_NAMES_22[ch_idx],
+                }
+                for ch_idx in sparse_channel_time_selected_channels
+            ],
+            "head_heatmap_selected_channels": sparse_channel_time_head_summary["selected_channels"],
+            "waveform_channels": sparse_channel_time_waveform_summary["channels"],
+        },
+        "sparse_channel_attack_waveforms": {
+            "display_name": "Sparse Channel Attack Waveforms",
+            "example_sample_idx": sparse_channel_sample_idx,
+            "example_true_label": int(y_sparse),
             "waveform_channels": waveform_summary["channels"],
         },
     }

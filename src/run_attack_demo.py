@@ -55,6 +55,8 @@ if __name__ == "__main__":
         support_mode=atk_cfg.support_mode,
         channel_waveform_rank=atk_cfg.channel_waveform_rank,
         channel_shortlist_size=atk_cfg.channel_shortlist_size,
+        enforce_unique_channels=atk_cfg.enforce_unique_channels,
+        stop_on_success=atk_cfg.stop_on_success,
         seed=baseline_cfg.random_seed,
     )
 

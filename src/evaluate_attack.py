@@ -45,6 +45,8 @@ def _build_attack_from_config(score_fn, baseline_cfg: BaselineConfig, cfg: Attac
         support_mode=cfg.support_mode,
         channel_waveform_rank=cfg.channel_waveform_rank,
         channel_shortlist_size=cfg.channel_shortlist_size,
+        enforce_unique_channels=cfg.enforce_unique_channels,
+        stop_on_success=cfg.stop_on_success,
         seed=seed,
     )
 

@@ -60,6 +60,8 @@ class AttackConfig:
     n_windows: int = 8
     support_budget_k: int = 5
     channel_shortlist_size: int | None = None
+    enforce_unique_channels: bool = False
+    stop_on_success: bool = True
     basis_rank_r: int = 4
     channel_waveform_rank: int | None = None
     basis_min_hz: float = 2.0

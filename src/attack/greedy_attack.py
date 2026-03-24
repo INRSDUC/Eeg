@@ -105,6 +105,8 @@ class GreedySparseScoreAttack:
         band_weight: float,
         max_coeff_abs: float,
         max_perturbation_peak_ratio: float | None,
+        enforce_unique_channels: bool = False,
+        stop_on_success: bool = True,
         seed: int = 0,
     ):
         self.score_fn = score_fn
@@ -130,6 +132,8 @@ class GreedySparseScoreAttack:
         self.band_weight = band_weight
         self.max_coeff_abs = max_coeff_abs
         self.max_perturbation_peak_ratio = max_perturbation_peak_ratio
+        self.enforce_unique_channels = enforce_unique_channels
+        self.stop_on_success = stop_on_success
         self.seed = seed
         self.queries_used = 0
 
@@ -336,6 +340,8 @@ class GreedySparseScoreAttack:
                 for atom in universe:
                     if atom in selected:
                         continue
+                    if self.enforce_unique_channels and any(int(existing_c) == int(atom[0]) for existing_c, _ in support):
+                        continue
                     candidate_coeffs, value = self._estimate_candidate(
                         x=x,
                         y=y,
@@ -379,7 +385,7 @@ class GreedySparseScoreAttack:
                     max_perturbation_peak_ratio=self.max_perturbation_peak_ratio,
                 )
                 current_margin = untargeted_margin(self._query_scores(x + delta), y)
-                if current_margin < 0.0:
+                if current_margin < 0.0 and self.stop_on_success:
                     return self._build_result(
                         x=x,
                         y=y,
@@ -441,6 +447,8 @@ class ChannelFirstScoreAttack:
         max_coeff_abs: float,
         max_perturbation_peak_ratio: float | None,
         channel_waveform_rank: int | None = None,
+        enforce_unique_channels: bool = False,
+        stop_on_success: bool = True,
         seed: int = 0,
     ):
         self.score_fn = score_fn
@@ -467,6 +475,8 @@ class ChannelFirstScoreAttack:
         self.max_coeff_abs = max_coeff_abs
         self.max_perturbation_peak_ratio = max_perturbation_peak_ratio
         self.channel_waveform_rank = channel_waveform_rank
+        self.enforce_unique_channels = enforce_unique_channels
+        self.stop_on_success = stop_on_success
         self.seed = seed
         self.queries_used = 0
 
@@ -700,7 +710,7 @@ class ChannelFirstScoreAttack:
                     max_perturbation_peak_ratio=self.max_perturbation_peak_ratio,
                 )
                 current_margin = untargeted_margin(self._query_scores(x + delta), y)
-                if current_margin < 0.0:
+                if current_margin < 0.0 and self.stop_on_success:
                     return self._build_result(
                         x=x,
                         y=y,
@@ -760,6 +770,8 @@ class ChannelThenWindowScoreAttack(GreedySparseScoreAttack):
         max_perturbation_peak_ratio: float | None,
         channel_waveform_rank: int | None = None,
         channel_shortlist_size: int | None = None,
+        enforce_unique_channels: bool = False,
+        stop_on_success: bool = True,
         seed: int = 0,
     ):
         super().__init__(
@@ -786,6 +798,8 @@ class ChannelThenWindowScoreAttack(GreedySparseScoreAttack):
             band_weight=band_weight,
             max_coeff_abs=max_coeff_abs,
             max_perturbation_peak_ratio=max_perturbation_peak_ratio,
+            enforce_unique_channels=enforce_unique_channels,
+            stop_on_success=stop_on_success,
             seed=seed,
         )
         self.channel_waveform_rank = channel_waveform_rank
@@ -946,6 +960,8 @@ class ChannelThenWindowScoreAttack(GreedySparseScoreAttack):
                 for atom in universe:
                     if atom in selected:
                         continue
+                    if self.enforce_unique_channels and any(int(existing_c) == int(atom[0]) for existing_c, _ in support):
+                        continue
                     candidate_coeffs, value = self._estimate_candidate(
                         x=x,
                         y=y,
@@ -1051,6 +1067,8 @@ def build_score_attack(
     support_mode: str = "channel_window",
     channel_waveform_rank: int | None = None,
     channel_shortlist_size: int | None = None,
+    enforce_unique_channels: bool = False,
+    stop_on_success: bool = True,
     seed: int = 0,
 ):
     common_kwargs = {
@@ -1077,6 +1095,8 @@ def build_score_attack(
         "band_weight": band_weight,
         "max_coeff_abs": max_coeff_abs,
         "max_perturbation_peak_ratio": max_perturbation_peak_ratio,
+        "enforce_unique_channels": enforce_unique_channels,
+        "stop_on_success": stop_on_success,
         "seed": seed,
     }
     if support_mode == "channel_window":

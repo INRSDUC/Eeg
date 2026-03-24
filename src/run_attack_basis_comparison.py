@@ -143,6 +143,8 @@ def _attack_one_sample(task: tuple[int, np.ndarray, int]) -> dict:
         support_mode=attack_cfg.support_mode,
         channel_waveform_rank=attack_cfg.channel_waveform_rank,
         channel_shortlist_size=attack_cfg.channel_shortlist_size,
+        enforce_unique_channels=attack_cfg.enforce_unique_channels,
+        stop_on_success=attack_cfg.stop_on_success,
         seed=baseline_cfg.random_seed + idx,
     )
     result = attack.run(x_np, y_int)
@@ -501,6 +503,8 @@ def _rerun_attack_for_sample(
         support_mode=attack_cfg.support_mode,
         channel_waveform_rank=attack_cfg.channel_waveform_rank,
         channel_shortlist_size=attack_cfg.channel_shortlist_size,
+        enforce_unique_channels=attack_cfg.enforce_unique_channels,
+        stop_on_success=attack_cfg.stop_on_success,
         seed=baseline_cfg.random_seed + sample_idx,
     )
     result = attack.run(x_np, y_int)
