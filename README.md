@@ -52,6 +52,17 @@ Notes:
 - Uses subject-ID recognition labels.
 - Uses a full cross-session split: trains on `0train` and validates on `1test`.
 
+## Run human-recognition attack comparison
+
+```bash
+python -m src.run_human_recognition_attack_comparison
+```
+
+Notes:
+- Reuses the saved human-recognition checkpoint in `outputs/bnci2014_001_human_recognition/`.
+- Compares sparse channel + hybrid waveform against sparse channel-time + hybrid waveform.
+- Defaults to a balanced capped subset of clean-correct validation trials for runtime; override with `EEG_ATTACK_MAX_SAMPLES`.
+
 ## Run multi-seed baseline stability sweep
 
 ```bash
